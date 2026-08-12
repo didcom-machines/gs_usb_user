@@ -1,0 +1,19 @@
+# Grant members of the "plugdev" group read/write access to gs_usb-
+# compatible USB-CAN adapters, so gsusb_info/gsusb_dump/gsusb_send can be
+# run without root.
+#
+# Install:
+#   sudo cp udev/99-gsusb.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload
+#   sudo udevadm trigger
+# (or just replug the adapter)
+#
+# Make sure your user is in the "plugdev" group (sudo usermod -aG plugdev $USER,
+# then log out/in) -- or change GROUP="plugdev" below to a group you use.
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d50", ATTR{idProduct}=="606f", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="2323", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1cd2", ATTR{idProduct}=="606f", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="16d0", ATTR{idProduct}=="10b8", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="16d0", ATTR{idProduct}=="0f30", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="ca01", MODE="0660", GROUP="plugdev"

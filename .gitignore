@@ -1,0 +1,11 @@
+bin/
+build/
+dist/
+dist-*/
+*.o
+*.so
+*.so.*
+__pycache__/
+*.pyc
+*.egg-info/
+.~lock.*#
