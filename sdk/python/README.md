@@ -84,6 +84,30 @@ python3 examples/react.py 500000
   `Detector` directly when a detection needs its own state across events
   (counters, debouncing, sequences) -- see `examples/react.py`.
 
+## python-can interoperability
+
+`gsusb/python_can.py` is an optional `can.BusABC` adapter, registered as
+`interface="gsusb"` via a `can.interface` entry point (not imported by
+`gsusb/__init__.py`, so the core SDK has no `python-can` dependency).
+Requires `python-can` installed (`pip install .[python-can]`, or plain
+`pip install python-can` alongside this package):
+
+```python
+import can
+with can.Bus(interface="gsusb", vid=0x1D50, pid=0x606F, bitrate=500000) as bus:
+    bus.send(can.Message(arbitration_id=0x123, data=b"\xDE\xAD\xBE\xEF"))
+    msg = bus.recv(timeout=1.0)
+```
+
+This is a *different* interface name than python-can's own built-in
+`"gs_usb"` (with underscore, via `pyusb` + a separate `gs_usb` PyPI
+package) -- that one doesn't support CAN-FD, hardware timestamps, or
+termination/get-state, which this adapter does by going through our own
+driver instead. Note: not currently usable on the RUTX11 itself, since
+`python-can` needs `pip` plus three more packages the router doesn't have
+(no `pip`, no matching `opkg` packages) -- this is for environments (dev
+machines, or a future device with `pip`) that already have `python-can`.
+
 ## Why this can listen and write at the same time
 
 `Bus.start()` spawns one Python thread that drains the C library's receive
