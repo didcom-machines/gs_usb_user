@@ -1,13 +1,17 @@
-"""Bus: opens one gs_usb channel and, once started, dispatches every
-received frame to registered Detector objects on a background thread --
-while your own code (or a Detector's on_detect()) can call send() at any
-time. See driver/include/gsusb.h's module docstring for why a single
-process can do this without extra locking of its own: the C library
-already runs its own reader thread and queue; this class's listener thread
-just drains that queue and dispatches.
+"""Bus: opens one gs_usb channel and, once started, runs one background
+listener thread that is the sole consumer of the C library's receive
+queue. Every frame it reads is both dispatched to registered Detector
+objects and pushed onto an internal queue that recv() drains -- so
+detectors and polling-style recv() calls can be used together (or alone)
+without racing each other for the same frames. Your own code (or a
+Detector's on_detect()) can call send() at any time; it's an independent
+USB OUT transfer that never blocks on, or is blocked by, the listener
+thread. See driver/include/gsusb.h's module docstring for why a single
+process can do this without extra locking of its own.
 """
 import ctypes as ct
 import logging
+import queue
 import threading
 from typing import Optional
 
@@ -57,6 +61,15 @@ class Bus:
         self._listener_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._started = False
+
+        # The listener thread is the *only* caller of gsusb_channel_recv()
+        # once started -- it's a single-consumer queue at the C level, so a
+        # second, independent consumer (e.g. recv() calling it directly)
+        # would race the listener thread for the same frames and silently
+        # lose almost every time. recv() instead drains this queue, which
+        # the listener thread feeds alongside dispatching to detectors, so
+        # both can be used together without competing.
+        self._recv_queue: "queue.Queue[Frame]" = queue.Queue(maxsize=512)
 
     # --- lifecycle ---
 
@@ -250,6 +263,21 @@ class Bus:
                 break
 
             frame = Frame._from_ctypes(frame_c)
+
+            # Feed recv()'s queue (drop-oldest if a caller never drains it,
+            # same overflow policy as the C library's own ring buffer).
+            try:
+                self._recv_queue.put_nowait(frame)
+            except queue.Full:
+                try:
+                    self._recv_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    self._recv_queue.put_nowait(frame)
+                except queue.Full:
+                    pass
+
             with self._detectors_lock:
                 detectors = list(self._detectors)
             for detector in detectors:
@@ -269,14 +297,14 @@ class Bus:
 
     def recv(self, timeout_ms: int = 1000) -> Optional[Frame]:
         """Blocking single-frame receive, for polling-style code instead of
-        (or alongside) detectors. Returns None on timeout."""
+        (or alongside) detectors -- drains the same frames the listener
+        thread feeds to detectors (see _listen_loop), not a second
+        independent read of the device. Returns None on timeout."""
         self._require_open()
-        frame_c = _ffi.GsusbFrame()
-        rc = self._lib.gsusb_channel_recv(self._ch, ct.byref(frame_c), timeout_ms)
-        if rc == 0:
+        try:
+            return self._recv_queue.get(timeout=timeout_ms / 1000.0)
+        except queue.Empty:
             return None
-        self._check(rc, "recv")
-        return Frame._from_ctypes(frame_c)
 
     # --- state / identify / termination ---
 

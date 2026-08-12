@@ -3,7 +3,13 @@
 
 usage: dump.py [bitrate]
 """
+import os
 import sys
+
+# Makes this script runnable standalone (python3 examples/dump.py) without
+# needing PYTHONPATH set -- Python only puts the script's own directory on
+# sys.path, not its parent, so the sibling ../gsusb package needs this.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from gsusb import Bus
 
