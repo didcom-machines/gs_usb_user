@@ -26,11 +26,25 @@ static const struct gsusb_known_id gsusb_known_ids[] = {
 #define GSUSB_KNOWN_ID_COUNT (sizeof(gsusb_known_ids) / sizeof(gsusb_known_ids[0]))
 
 /* Opens vid:pid if both are non-zero, otherwise tries every known id in
- * turn. bus/addr may be -1 to match any. Prints an error and exits the
+ * turn. bus/addr may be -1 to match any. If usb_fd >= 0, vid/pid/bus/addr
+ * are ignored and the device is opened from that already-open file
+ * descriptor instead (gsusb_open_fd() -- the unrooted Android/Termux path:
+ * `termux-usb -r -e ./thistool /dev/bus/usb/BBB/DDD` requests permission
+ * via Android's UsbManager and appends the granted fd as this process's
+ * last argument; pass it as --usb-fd). Prints an error and exits the
  * process on failure -- meant for these small CLI tools, not library use. */
-static inline gsusb_dev *gsusb_tool_open(void *ctx, int vid, int pid, int bus, int addr)
+static inline gsusb_dev *gsusb_tool_open(void *ctx, int vid, int pid, int bus, int addr, int usb_fd)
 {
 	char err[256];
+
+	if (usb_fd >= 0) {
+		gsusb_dev *d = gsusb_open_fd(ctx, usb_fd, err, sizeof(err));
+		if (!d) {
+			fprintf(stderr, "gsusb: %s\n", err);
+			exit(1);
+		}
+		return d;
+	}
 
 	if (vid > 0 && pid > 0) {
 		gsusb_dev *d = gsusb_open(ctx, (uint16_t)vid, (uint16_t)pid, bus, addr, err, sizeof(err));

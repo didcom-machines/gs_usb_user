@@ -106,7 +106,7 @@ static int parse_frame(const char *s, gsusb_frame *f)
 
 int main(int argc, char **argv)
 {
-	int vid = 0, pid = 0, bus = -1, addr = -1;
+	int vid = 0, pid = 0, bus = -1, addr = -1, usb_fd = -1;
 	unsigned int channel = 0;
 	uint32_t bitrate = 500000, data_bitrate = 2000000;
 	int fd_mode = 0, loopback = 0;
@@ -117,6 +117,7 @@ int main(int argc, char **argv)
 		{ "pid", required_argument, 0, 'p' },
 		{ "bus", required_argument, 0, 'b' },
 		{ "addr", required_argument, 0, 'a' },
+		{ "usb-fd", required_argument, 0, 'U' },
 		{ "channel", required_argument, 0, 'c' },
 		{ "bitrate", required_argument, 0, 'r' },
 		{ "data-bitrate", required_argument, 0, 'd' },
@@ -129,12 +130,13 @@ int main(int argc, char **argv)
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "v:p:b:a:c:r:d:fLR:i:h", opts, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "v:p:b:a:U:c:r:d:fLR:i:h", opts, NULL)) != -1) {
 		switch (c) {
 		case 'v': vid = (int)strtoul(optarg, NULL, 16); break;
 		case 'p': pid = (int)strtoul(optarg, NULL, 16); break;
 		case 'b': bus = atoi(optarg); break;
 		case 'a': addr = atoi(optarg); break;
+		case 'U': usb_fd = atoi(optarg); break;
 		case 'c': channel = (unsigned int)atoi(optarg); break;
 		case 'r': bitrate = (uint32_t)strtoul(optarg, NULL, 10); break;
 		case 'd': data_bitrate = (uint32_t)strtoul(optarg, NULL, 10); break;
@@ -147,6 +149,7 @@ int main(int argc, char **argv)
 			fprintf(stderr,
 				"usage: %s [opts] <id>#<hexdata|R> [<id>#<hexdata|R> ...]\n"
 				"       %s [opts] --fd <id>##<flags><hexdata> ...\n"
+				"       %s --usb-fd N ...   (unrooted Android/Termux: see termux-usb(1))\n"
 				"  --vid/--pid HEX, --bus/--addr N, --channel N\n"
 				"  --bitrate BPS (default 500000), --fd --data-bitrate BPS (default 2000000)\n"
 				"  --loopback      also loop the frame(s) back to this adapter's own rx\n"
@@ -154,7 +157,7 @@ int main(int argc, char **argv)
 				"  --interval-ms N delay between repeats\n"
 				"example: %s 123#DEADBEEF\n"
 				"example: %s --fd 1FFFFFFF##1 0011223344556677\n",
-				argv[0], argv[0], argv[0], argv[0]);
+				argv[0], argv[0], argv[0], argv[0], argv[0]);
 			return c == 'h' ? 0 : 1;
 		}
 	}
@@ -186,7 +189,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	gsusb_dev *dev = gsusb_tool_open(ctx, vid, pid, bus, addr);
+	gsusb_dev *dev = gsusb_tool_open(ctx, vid, pid, bus, addr, usb_fd);
 	gsusb_channel *ch = gsusb_channel_get(dev, channel);
 	if (!ch) {
 		fprintf(stderr, "gsusb_send: channel %u does not exist on this device\n", channel);

@@ -132,6 +132,19 @@ void gsusb_exit(void *ctx);
  * Returns NULL on error and writes a message into errbuf (if non-NULL). */
 gsusb_dev *gsusb_open(void *ctx, uint16_t vid, uint16_t pid, int bus, int addr,
 		      char *errbuf, size_t errbuf_len);
+
+/* Opens a device from an already-open OS file descriptor for the USB
+ * device node, instead of enumerating and opening it ourselves. For
+ * platforms where this process cannot open the /dev/bus/usb device node -
+ * chiefly unrooted Android/Termux, where the fd instead comes from
+ * Termux:API's `termux-usb` helper after the user grants USB permission
+ * through Android's UsbManager (termux-usb appends the fd as the last
+ * argument to the command it runs). Requires libusb >= 1.0.23
+ * (libusb_wrap_sys_device). Same post-open setup as gsusb_open()
+ * (HOST_FORMAT, DEVICE_CONFIG, per-channel BT_CONST); returns NULL on
+ * error and writes a message into errbuf (if non-NULL). */
+gsusb_dev *gsusb_open_fd(void *ctx, int fd, char *errbuf, size_t errbuf_len);
+
 void gsusb_close(gsusb_dev *dev);
 
 unsigned int gsusb_channel_count(const gsusb_dev *dev);

@@ -348,48 +348,23 @@ static void *reader_thread_fn(void *arg)
 	return NULL;
 }
 
-/* --- device open/close --- */
+/* --- device open/close ---
+ *
+ * gsusb_open() (enumerate by vid:pid, then libusb_open()) and
+ * gsusb_open_fd() (wrap an already-open fd, for platforms where this
+ * process can't open the device node itself - see gsusb_open_fd()'s doc
+ * comment in gsusb.h) share everything after obtaining a
+ * libusb_device_handle: claim the interface, find endpoints, and run the
+ * device/channel discovery handshake. That shared part lives in
+ * gsusb_open_from_handle().
+ */
 
-gsusb_dev *gsusb_open(void *ctx, uint16_t vid, uint16_t pid, int bus, int addr,
-		      char *errbuf, size_t errbuf_len)
+static gsusb_dev *gsusb_open_from_handle(libusb_device_handle *handle,
+					 char *errbuf, size_t errbuf_len)
 {
 #define SETERR(...) do { if (errbuf && errbuf_len) snprintf(errbuf, errbuf_len, __VA_ARGS__); } while (0)
 
-	libusb_device **list = NULL;
-	ssize_t n = libusb_get_device_list((libusb_context *)ctx, &list);
-	if (n < 0) {
-		SETERR("libusb_get_device_list failed: %s", libusb_strerror((int)n));
-		return NULL;
-	}
-
-	libusb_device *match = NULL;
-	for (ssize_t i = 0; i < n; i++) {
-		struct libusb_device_descriptor desc;
-		if (libusb_get_device_descriptor(list[i], &desc) != 0)
-			continue;
-		if (desc.idVendor != vid || desc.idProduct != pid)
-			continue;
-		if (bus >= 0 && libusb_get_bus_number(list[i]) != (uint8_t)bus)
-			continue;
-		if (addr >= 0 && libusb_get_device_address(list[i]) != (uint8_t)addr)
-			continue;
-		match = list[i];
-		break;
-	}
-
-	if (!match) {
-		libusb_free_device_list(list, 1);
-		SETERR("no device matching %04x:%04x found", vid, pid);
-		return NULL;
-	}
-
-	libusb_device_handle *handle = NULL;
-	int rc = libusb_open(match, &handle);
-	libusb_free_device_list(list, 1);
-	if (rc != 0) {
-		SETERR("libusb_open failed: %s", libusb_strerror(rc));
-		return NULL;
-	}
+	int rc;
 
 	libusb_set_auto_detach_kernel_driver(handle, 1); /* best effort, ignore result */
 
@@ -550,6 +525,68 @@ fail_free_dev:
 	libusb_close(handle);
 	free(dev);
 	return NULL;
+
+#undef SETERR
+}
+
+gsusb_dev *gsusb_open(void *ctx, uint16_t vid, uint16_t pid, int bus, int addr,
+		      char *errbuf, size_t errbuf_len)
+{
+#define SETERR(...) do { if (errbuf && errbuf_len) snprintf(errbuf, errbuf_len, __VA_ARGS__); } while (0)
+
+	libusb_device **list = NULL;
+	ssize_t n = libusb_get_device_list((libusb_context *)ctx, &list);
+	if (n < 0) {
+		SETERR("libusb_get_device_list failed: %s", libusb_strerror((int)n));
+		return NULL;
+	}
+
+	libusb_device *match = NULL;
+	for (ssize_t i = 0; i < n; i++) {
+		struct libusb_device_descriptor desc;
+		if (libusb_get_device_descriptor(list[i], &desc) != 0)
+			continue;
+		if (desc.idVendor != vid || desc.idProduct != pid)
+			continue;
+		if (bus >= 0 && libusb_get_bus_number(list[i]) != (uint8_t)bus)
+			continue;
+		if (addr >= 0 && libusb_get_device_address(list[i]) != (uint8_t)addr)
+			continue;
+		match = list[i];
+		break;
+	}
+
+	if (!match) {
+		libusb_free_device_list(list, 1);
+		SETERR("no device matching %04x:%04x found", vid, pid);
+		return NULL;
+	}
+
+	libusb_device_handle *handle = NULL;
+	int rc = libusb_open(match, &handle);
+	libusb_free_device_list(list, 1);
+	if (rc != 0) {
+		SETERR("libusb_open failed: %s", libusb_strerror(rc));
+		return NULL;
+	}
+
+	return gsusb_open_from_handle(handle, errbuf, errbuf_len);
+
+#undef SETERR
+}
+
+gsusb_dev *gsusb_open_fd(void *ctx, int fd, char *errbuf, size_t errbuf_len)
+{
+#define SETERR(...) do { if (errbuf && errbuf_len) snprintf(errbuf, errbuf_len, __VA_ARGS__); } while (0)
+
+	libusb_device_handle *handle = NULL;
+	int rc = libusb_wrap_sys_device((libusb_context *)ctx, (intptr_t)fd, &handle);
+	if (rc != 0) {
+		SETERR("libusb_wrap_sys_device failed: %s", libusb_strerror(rc));
+		return NULL;
+	}
+
+	return gsusb_open_from_handle(handle, errbuf, errbuf_len);
 
 #undef SETERR
 }

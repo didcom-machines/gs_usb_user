@@ -120,36 +120,41 @@ static void do_scan(int vid, int pid, int bus_filter, int addr_filter)
 
 int main(int argc, char **argv)
 {
-	int vid = 0, pid = 0, bus = -1, addr = -1, scan = 0;
+	int vid = 0, pid = 0, bus = -1, addr = -1, scan = 0, usb_fd = -1;
 
 	static struct option opts[] = {
 		{ "vid", required_argument, 0, 'v' },
 		{ "pid", required_argument, 0, 'p' },
 		{ "bus", required_argument, 0, 'b' },
 		{ "addr", required_argument, 0, 'a' },
+		{ "usb-fd", required_argument, 0, 'U' },
 		{ "scan", no_argument, 0, 's' },
 		{ "help", no_argument, 0, 'h' },
 		{ 0, 0, 0, 0 },
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "v:p:b:a:sh", opts, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "v:p:b:a:U:sh", opts, NULL)) != -1) {
 		switch (c) {
 		case 'v': vid = (int)strtoul(optarg, NULL, 16); break;
 		case 'p': pid = (int)strtoul(optarg, NULL, 16); break;
 		case 'b': bus = atoi(optarg); break;
 		case 'a': addr = atoi(optarg); break;
+		case 'U': usb_fd = atoi(optarg); break;
 		case 's': scan = 1; break;
 		case 'h':
 		default:
 			fprintf(stderr,
 				"usage: %s [--scan] [--vid HEX --pid HEX] [--bus N --addr N]\n"
+				"       %s --usb-fd N\n"
 				"  --scan          list matching devices without opening them\n"
 				"  --vid/--pid     restrict to a specific USB vendor:product id (hex)\n"
 				"  --bus/--addr    restrict to a specific USB bus number / device address\n"
+				"  --usb-fd N      open an already-granted USB file descriptor instead of\n"
+				"                  enumerating (unrooted Android/Termux: see termux-usb(1))\n"
 				"With no arguments, opens the first known gs_usb-compatible device found\n"
 				"and prints its channel count and per-channel bit-timing capabilities.\n",
-				argv[0]);
+				argv[0], argv[0]);
 			return c == 'h' ? 0 : 1;
 		}
 	}
@@ -166,7 +171,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	gsusb_dev *dev = gsusb_tool_open(ctx, vid, pid, bus, addr);
+	gsusb_dev *dev = gsusb_tool_open(ctx, vid, pid, bus, addr, usb_fd);
 	const gsusb_device_config *dc = gsusb_get_device_config(dev);
 
 	printf("device: sw_version=%u hw_version=%u channels=%u\n",

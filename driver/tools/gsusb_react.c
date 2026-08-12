@@ -33,7 +33,7 @@ static uint64_t now_ns(void)
 
 int main(int argc, char **argv)
 {
-	int vid = 0, pid = 0, bus = -1, addr = -1;
+	int vid = 0, pid = 0, bus = -1, addr = -1, usb_fd = -1;
 	unsigned int channel = 0;
 	uint32_t bitrate = 500000;
 	int loopback = 0;
@@ -44,6 +44,7 @@ int main(int argc, char **argv)
 		{ "pid", required_argument, 0, 'p' },
 		{ "bus", required_argument, 0, 'b' },
 		{ "addr", required_argument, 0, 'a' },
+		{ "usb-fd", required_argument, 0, 'U' },
 		{ "channel", required_argument, 0, 'c' },
 		{ "bitrate", required_argument, 0, 'r' },
 		{ "key-id", required_argument, 0, 'k' },
@@ -54,12 +55,13 @@ int main(int argc, char **argv)
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "v:p:b:a:c:r:k:R:Lh", opts, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "v:p:b:a:U:c:r:k:R:Lh", opts, NULL)) != -1) {
 		switch (c) {
 		case 'v': vid = (int)strtoul(optarg, NULL, 16); break;
 		case 'p': pid = (int)strtoul(optarg, NULL, 16); break;
 		case 'b': bus = atoi(optarg); break;
 		case 'a': addr = atoi(optarg); break;
+		case 'U': usb_fd = atoi(optarg); break;
 		case 'c': channel = (unsigned int)atoi(optarg); break;
 		case 'r': bitrate = (uint32_t)strtoul(optarg, NULL, 10); break;
 		case 'k': key_id = (uint32_t)strtoul(optarg, NULL, 16); break;
@@ -69,11 +71,12 @@ int main(int argc, char **argv)
 		default:
 			fprintf(stderr,
 				"usage: %s [opts] [--key-id HEX] [--resp-id HEX] [--loopback]\n"
+				"       %s --usb-fd N ...   (unrooted Android/Termux: see termux-usb(1))\n"
 				"Watches for CAN id --key-id (default 0x100) and immediately\n"
 				"transmits a response on --resp-id (default 0x200).\n"
 				"Edit the two TODO blocks in tools/gsusb_react.c to customize\n"
 				"the match condition and the response frame.\n",
-				argv[0]);
+				argv[0], argv[0]);
 			return c == 'h' ? 0 : 1;
 		}
 	}
@@ -82,7 +85,7 @@ int main(int argc, char **argv)
 	int rc = gsusb_init(&ctx);
 	if (rc) { fprintf(stderr, "gsusb_react: %s\n", gsusb_strerror(rc)); return 1; }
 
-	gsusb_dev *dev = gsusb_tool_open(ctx, vid, pid, bus, addr);
+	gsusb_dev *dev = gsusb_tool_open(ctx, vid, pid, bus, addr, usb_fd);
 	gsusb_channel *ch = gsusb_channel_get(dev, channel);
 	if (!ch) { fprintf(stderr, "gsusb_react: channel %u does not exist\n", channel); return 1; }
 
