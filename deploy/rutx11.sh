@@ -77,18 +77,23 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 			cp bin/gsusb_info bin/gsusb_dump bin/gsusb_send bin/gsusb_react bin/libgsusb.so /src/dist-rutx11/driver/
 			chown "$HOST_UID:$HOST_GID" /src/dist-rutx11/driver/*
 		'
-
-	log "Staging Python SDK"
-	cp -r "$REPO_ROOT/sdk/python/gsusb" "$REPO_ROOT/sdk/python/examples" "$DIST_DIR/python/"
-	rm -rf "$DIST_DIR/python/gsusb/__pycache__"
-	cp "$DIST_DIR/driver/libgsusb.so" "$DIST_DIR/python/gsusb/libgsusb.so"
 else
-	log "Skipping build, reusing $DIST_DIR"
+	log "Skipping the (slow) C cross-build, reusing $DIST_DIR/driver"
 	[ -d "$DIST_DIR/driver" ] || {
 		echo "error: $DIST_DIR/driver not found; run once without --skip-build first" >&2
 		exit 1
 	}
 fi
+
+# Python SDK is pure Python -- always re-staged (cheap, no Docker/build
+# needed), even with --skip-build, so iterating on Python-only changes
+# doesn't require a full C cross-build to actually take effect.
+log "Staging Python SDK"
+mkdir -p "$DIST_DIR/python"
+rm -rf "$DIST_DIR/python/gsusb" "$DIST_DIR/python/examples"
+cp -r "$REPO_ROOT/sdk/python/gsusb" "$REPO_ROOT/sdk/python/examples" "$DIST_DIR/python/"
+rm -rf "$DIST_DIR/python/gsusb/__pycache__"
+cp "$DIST_DIR/driver/libgsusb.so" "$DIST_DIR/python/gsusb/libgsusb.so"
 
 # --- 2. open a multiplexed SSH connection (prompts for the password once) ---
 
