@@ -105,8 +105,11 @@ done
 
 mkdir -p /src/dist-android
 cp bin/gsusb_info bin/gsusb_dump bin/gsusb_send bin/gsusb_react /src/dist-android/
+# Bundle the termux-usb wrapper alongside the binaries -- copying just this
+# directory's contents should be everything needed to run on-device.
+cp /src/deploy/android/run-with-usb.sh /src/dist-android/
 chown "$HOST_UID:$HOST_GID" /src/dist-android/*
-echo "==> Done: dist-android/{gsusb_info,gsusb_dump,gsusb_send,gsusb_react}"
+echo "==> Done: dist-android/{gsusb_info,gsusb_dump,gsusb_send,gsusb_react,run-with-usb.sh}"
 INNER
 
 docker run --rm \
