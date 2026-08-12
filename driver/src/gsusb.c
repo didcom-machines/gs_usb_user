@@ -633,6 +633,18 @@ int gsusb_init(void **ctx_out)
 	return 0;
 }
 
+int gsusb_init_no_discovery(void **ctx_out)
+{
+	libusb_context *ctx = NULL;
+	struct libusb_init_option opts[1];
+	opts[0].option = LIBUSB_OPTION_NO_DEVICE_DISCOVERY;
+	int rc = libusb_init_context(&ctx, opts, 1);
+	if (rc != 0)
+		return map_libusb_err(rc);
+	*ctx_out = ctx;
+	return 0;
+}
+
 void gsusb_exit(void *ctx)
 {
 	if (ctx)

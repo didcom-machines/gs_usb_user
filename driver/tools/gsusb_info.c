@@ -165,7 +165,7 @@ int main(int argc, char **argv)
 	}
 
 	void *ctx = NULL;
-	int rc = gsusb_init(&ctx);
+	int rc = (usb_fd >= 0) ? gsusb_init_no_discovery(&ctx) : gsusb_init(&ctx);
 	if (rc) {
 		fprintf(stderr, "gsusb_info: %s\n", gsusb_strerror(rc));
 		return 1;

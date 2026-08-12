@@ -123,6 +123,16 @@ typedef struct gsusb_channel gsusb_channel; /* opaque: one CAN channel on it */
 /* Initializes libusb. *ctx_out receives the libusb context to pass to
  * gsusb_open()/gsusb_exit(). Returns 0 on success, <0 on error. */
 int gsusb_init(void **ctx_out);
+
+/* Like gsusb_init(), but tells libusb to skip its own device enumeration/
+ * scan at startup (LIBUSB_OPTION_NO_DEVICE_DISCOVERY). Use this before
+ * gsusb_open_fd() on unrooted Android: plain gsusb_init()'s normal device
+ * scan fails there under SELinux even though gsusb_open_fd() never needs
+ * it (it wraps an fd Android already granted, not one we enumerate to
+ * find). Requires libusb >= 1.0.22 (libusb_init_context). Harmless/valid
+ * to use with gsusb_open() too, just not necessary off-Android. */
+int gsusb_init_no_discovery(void **ctx_out);
+
 void gsusb_exit(void *ctx);
 
 /* Opens the first attached device matching vid:pid. If bus/addr are >= 0,

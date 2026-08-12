@@ -5,13 +5,16 @@ inside [Termux](https://termux.dev/). This lives on the `android-termux`
 branch, separate from the main project, and is not part of the primary
 Jetson/RUTX11 deliverable.
 
-**Status: compiled but not verified on real hardware.** Everything here
-compiles cleanly and produces correctly-formed ELF64 AArch64 PIE binaries
-(confirmed via `readelf`), but there was no physical Android device
-available to actually run them on. Treat this as a solid starting point
-that needs a first real on-device test, not as something already proven
-the way the Jetson/RUTX11 builds are (both of those were verified with
-real hardware loopback tests over an actual SSH session to the device).
+**Status: first real on-device attempt found a real bug, now fixed (still
+not fully re-verified).** A first run on actual hardware hit
+`gsusb_info: I/O error` on startup -- a genuine issue (see "A second,
+less obvious fix" below), not a fluke, since it comes from
+`libusb_init()`'s own device scan failing under SELinux. Fixed by using
+`libusb_init_context()` with `LIBUSB_OPTION_NO_DEVICE_DISCOVERY` whenever
+`--usb-fd` is given. Confirmed at the API level (a standalone test
+program calling `gsusb_init_no_discovery()` succeeds) and the fix
+compiles/cross-compiles cleanly, but hasn't yet been re-run on the actual
+device that hit the original error -- that's the next thing to confirm.
 
 ## Why this needed real driver changes, not just a cross-compile
 
@@ -28,6 +31,18 @@ To support that, `driver/include/gsusb.h` gained `gsusb_open_fd()`
 libusb >= 1.0.23), and all four CLI tools gained a `--usb-fd N` flag as an
 alternative to `--vid`/`--pid`. See the commit that introduced this for
 the full design rationale.
+
+**A second, less obvious fix was needed too**: plain `libusb_init()` scans
+for/enumerates all attached USB devices at startup, regardless of whether
+you'll actually use that scan -- and that scan itself fails under SELinux
+on unrooted Android (surfaces as a generic `gsusb_info: I/O error`, since
+it doesn't map to any more specific libusb error code), even though
+`gsusb_open_fd()`'s `libusb_wrap_sys_device()` path never needed the scan
+in the first place. libusb has a dedicated option for exactly this --
+`LIBUSB_OPTION_NO_DEVICE_DISCOVERY`, whose own doc comment literally says
+"typically needed on Android" -- set via `libusb_init_context()` instead
+of plain `libusb_init()`. `gsusb_init_no_discovery()` wraps this; the CLI
+tools call it automatically whenever `--usb-fd` is given.
 
 ## Build
 
