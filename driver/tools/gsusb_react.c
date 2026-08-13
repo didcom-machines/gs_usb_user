@@ -33,6 +33,12 @@ static uint64_t now_ns(void)
 
 int main(int argc, char **argv)
 {
+	/* Force line buffering even when stdout isn't a TTY (piped to a file,
+	 * or run under a wrapper like termux-usb that doesn't attach a real
+	 * terminal) -- otherwise glibc/bionic fully-buffer stdout and reaction
+	 * logs only appear once the buffer fills or the process exits. */
+	setvbuf(stdout, NULL, _IOLBF, 0);
+
 	int vid = 0, pid = 0, bus = -1, addr = -1;
 	unsigned int channel = 0;
 	uint32_t bitrate = 500000;

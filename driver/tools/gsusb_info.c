@@ -120,6 +120,8 @@ static void do_scan(int vid, int pid, int bus_filter, int addr_filter)
 
 int main(int argc, char **argv)
 {
+	setvbuf(stdout, NULL, _IOLBF, 0); /* line-buffer even when not a TTY */
+
 	int vid = 0, pid = 0, bus = -1, addr = -1, scan = 0;
 
 	static struct option opts[] = {

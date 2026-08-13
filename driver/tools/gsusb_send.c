@@ -106,6 +106,8 @@ static int parse_frame(const char *s, gsusb_frame *f)
 
 int main(int argc, char **argv)
 {
+	setvbuf(stdout, NULL, _IOLBF, 0); /* line-buffer even when not a TTY */
+
 	int vid = 0, pid = 0, bus = -1, addr = -1;
 	unsigned int channel = 0;
 	uint32_t bitrate = 500000, data_bitrate = 2000000;
