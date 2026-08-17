@@ -1,9 +1,36 @@
 # gs_usb userspace: driver + SDK
 
-A userspace port of the Linux kernel's `gs_usb` CAN driver, for systems
-where you can't build or load a kernel module -- plus a Python SDK for
-writing applications on top of it (built for deployment on devices like the
-Teltonika RUTX11).
+**Purpose:** make USB-to-CAN adapters (candleLight, CANable, the original
+GS USB2CAN, CES CANext FD, and others -- see `driver/README.md` for the
+full list) work on Linux machines where you can't build or load a kernel
+module -- embedded/vendor Linux images (OpenWrt/RutOS routers, Yocto
+builds, locked-down appliances) that ship without `gs_usb.ko` and with no
+way to add one. It talks to the adapter's existing USB vendor protocol
+directly via `libusb-1.0`, replicating the kernel driver's wire format in
+userspace -- no SocketCAN, no kernel module. Includes a Python SDK for
+writing applications on top of it (originally built for deployment on
+devices like the Teltonika RUTX11, but usable anywhere).
+
+## Requirements
+
+- **A working generic USB host-controller stack in the kernel** -- i.e.
+  the system can already enumerate USB devices at all (`usbcore` plus
+  whatever host-controller driver the hardware needs: xHCI/EHCI/OHCI).
+  This project sits *on top of* that generic USB support via
+  `libusb-1.0`/`usbfs`; it replaces only the CAN-adapter-specific kernel
+  driver (`gs_usb.ko`), not USB support in general. Every mainstream Linux
+  kernel -- including RutOS/OpenWrt on the RUTX11 -- ships the generic USB
+  stack even when it omits `gs_usb.ko`, so this requirement is almost
+  never actually missing in practice, but it is a real one: without a USB
+  base driver already in place for `libusb` to sit on, there's no device
+  node for either the kernel driver or this one to talk to.
+- `libusb-1.0` -- build-time: `libusb-1.0-0-dev` + a C compiler; runtime:
+  just the shared library, already present on virtually any desktop/server
+  Linux and straightforward to have on embedded targets too.
+- Root, or the provided udev rule (`driver/udev/99-gsusb.rules`) so a
+  regular user in the `plugdev` group can open the adapter -- no kernel
+  module and no `python-can`/pip required for the Python SDK (see
+  `sdk/python/README.md`).
 
 ## Layout
 
