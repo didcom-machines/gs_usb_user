@@ -169,19 +169,35 @@ end
 -- Waits `seconds`, pumping poll() the whole time instead of blocking
 -- blindly -- Lua's standard library has no sleep() at all (no FFI here to
 -- reach a libc usleep/nanosleep either, see lua_gsusb.c's module
--- docstring on why), but recv()'s timeout_ms is a real, sub-second-
--- accurate libusb-level wait regardless -- so chunking poll() calls up
--- to the requested total both waits accurately AND keeps dispatching to
--- every registered detector the whole time (a plain sleep would silently
--- stop reacting to traffic for its whole duration). Used by
--- IOXDevice:sleep()/IOXBus:sleep() (fmx-can-control) for exactly that
--- reason -- see those modules.
+-- docstring on why). Used by IOXDevice:sleep()/IOXBus:sleep()
+-- (fmx-can-control) so on_event()/on_change() keep firing during a
+-- "sleep" instead of it stopping dispatch for its whole duration.
+--
+-- CORRECTNESS NOTE (a real bug this shipped with initially): recv()'s
+-- timeout_ms is only a real wait when NO frame arrives -- it returns the
+-- instant one IS available, same as any select()/poll()-style timeout.
+-- On a bus with any regular traffic (heartbeats, another node's status
+-- bursts, ...) poll() can return almost immediately, over and over, so
+-- chunking fixed-size timeouts and just subtracting them from a
+-- countdown (the original implementation here) silently races through
+-- the whole requested duration in a fraction of the real time whenever
+-- the bus is busy -- exactly backwards from what a "sleep" should
+-- guarantee. There is no sub-second wall clock available without FFI on
+-- this target (os.clock() measures CPU time, not wall time -- it does
+-- NOT advance while blocked in recv(); confirmed empirically: ~0.001s of
+-- os.clock() elapsed across a real 2-second wait), so this uses
+-- os.time()'s 1-second resolution as the actual authority on elapsed
+-- time instead of trusting poll()'s return timing -- meaning a sub-
+-- second request rounds up to whichever whole-second boundary comes
+-- next (a 0.5s ask can take anywhere from ~0-1s), and any request is
+-- accurate to within about a second either way. If sub-second accuracy
+-- ever matters, add a real monotonic-clock binding to lua_gsusb.c
+-- (clock_gettime(CLOCK_MONOTONIC, ...)) rather than trying to fake one
+-- here.
 function Bus:sleep(seconds)
-    local remaining_ms = math.floor(seconds * 1000)
-    while remaining_ms > 0 do
-        local chunk_ms = math.min(200, remaining_ms)
-        self:poll(chunk_ms)
-        remaining_ms = remaining_ms - chunk_ms
+    local deadline = os.time() + seconds
+    while os.time() < deadline do
+        self:poll(200)
     end
 end
 
