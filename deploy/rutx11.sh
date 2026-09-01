@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Cross-builds the gs_usb driver (CLI tools + libgsusb.so) and the Python
-# SDK for the RUTX11 (armv7 Cortex-A7, musl libc, RutOS/OpenWrt) and deploys
-# both over SSH. Safe to re-run.
+# Cross-builds both C drivers (the gs_usb port and the from-scratch
+# gcan_native driver) and the Python SDK for the RUTX11 (armv7 Cortex-A7,
+# musl libc, RutOS/OpenWrt) and deploys all of it over SSH. Safe to re-run.
 #
 # Usage: deploy/rutx11.sh [--host HOST] [--user USER] [--remote-dir DIR] [--skip-build]
 #
@@ -60,9 +60,9 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 		exit 1
 	}
 
-	log "Cross-building driver (CLI tools + libgsusb.so) for armv7/musl"
+	log "Cross-building both drivers (gsusb + gcan_native) for armv7/musl"
 	rm -rf "$DIST_DIR"
-	mkdir -p "$DIST_DIR/driver" "$DIST_DIR/python"
+	mkdir -p "$DIST_DIR/driver" "$DIST_DIR/gcan_native"
 
 	docker run --rm -v "$REPO_ROOT":/src --platform linux/arm/v7 \
 		-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
@@ -70,17 +70,25 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 			set -e
 			apk add --no-cache build-base libusb-dev pkgconfig >/dev/null
 			cp -r /src /tmp/build
+
 			cd /tmp/build/driver
 			make clean >/dev/null 2>&1 || true
 			make
 			mkdir -p /src/dist-rutx11/driver
 			cp bin/gsusb_info bin/gsusb_dump bin/gsusb_send bin/gsusb_react bin/libgsusb.so /src/dist-rutx11/driver/
-			chown "$HOST_UID:$HOST_GID" /src/dist-rutx11/driver/*
+
+			cd /tmp/build/driver/gcan_native
+			make clean >/dev/null 2>&1 || true
+			make
+			mkdir -p /src/dist-rutx11/gcan_native
+			cp bin/gcan_native_tool bin/libgcan_native.so /src/dist-rutx11/gcan_native/
+
+			chown -R "$HOST_UID:$HOST_GID" /src/dist-rutx11/driver /src/dist-rutx11/gcan_native
 		'
 else
-	log "Skipping the (slow) C cross-build, reusing $DIST_DIR/driver"
-	[ -d "$DIST_DIR/driver" ] || {
-		echo "error: $DIST_DIR/driver not found; run once without --skip-build first" >&2
+	log "Skipping the (slow) C cross-build, reusing $DIST_DIR"
+	[ -d "$DIST_DIR/driver" ] && [ -d "$DIST_DIR/gcan_native" ] || {
+		echo "error: $DIST_DIR/{driver,gcan_native} not found; run once without --skip-build first" >&2
 		exit 1
 	}
 fi
@@ -88,12 +96,15 @@ fi
 # Python SDK is pure Python -- always re-staged (cheap, no Docker/build
 # needed), even with --skip-build, so iterating on Python-only changes
 # doesn't require a full C cross-build to actually take effect.
-log "Staging Python SDK"
+log "Staging Python SDK (cancore + gsusb + gcan + candetect)"
 mkdir -p "$DIST_DIR/python"
-rm -rf "$DIST_DIR/python/gsusb" "$DIST_DIR/python/examples"
-cp -r "$REPO_ROOT/sdk/python/gsusb" "$REPO_ROOT/sdk/python/examples" "$DIST_DIR/python/"
-rm -rf "$DIST_DIR/python/gsusb/__pycache__"
+rm -rf "$DIST_DIR/python/cancore" "$DIST_DIR/python/gsusb" "$DIST_DIR/python/gcan" \
+       "$DIST_DIR/python/candetect" "$DIST_DIR/python/examples"
+cp -r "$REPO_ROOT/sdk/python/cancore" "$REPO_ROOT/sdk/python/gsusb" "$REPO_ROOT/sdk/python/gcan" \
+      "$REPO_ROOT/sdk/python/candetect" "$REPO_ROOT/sdk/python/examples" "$DIST_DIR/python/"
+rm -rf "$DIST_DIR/python/cancore/__pycache__" "$DIST_DIR/python/gsusb/__pycache__" "$DIST_DIR/python/gcan/__pycache__"
 cp "$DIST_DIR/driver/libgsusb.so" "$DIST_DIR/python/gsusb/libgsusb.so"
+cp "$DIST_DIR/gcan_native/libgcan_native.so" "$DIST_DIR/python/gcan/libgcan_native.so"
 
 # --- 2. open a multiplexed SSH connection (prompts for the password once) ---
 
@@ -112,35 +123,40 @@ ssh "${SSH_OPTS[@]}" -fN "$SSH_USER@$HOST"
 
 # --- 3. deploy ---
 
-log "Checking whether a gsusb tool is already holding the adapter open"
-BUSY="$(ssh "${SSH_OPTS[@]}" "$SSH_USER@$HOST" "ps w 2>/dev/null | grep -E 'gsusb_(dump|send|react)' | grep -v grep || true")"
+log "Checking whether a gsusb/gcan tool is already holding an adapter open"
+BUSY="$(ssh "${SSH_OPTS[@]}" "$SSH_USER@$HOST" "ps w 2>/dev/null | grep -E 'gsusb_(dump|send|react)|gcan_native_tool' | grep -v grep || true")"
 if [ -n "$BUSY" ]; then
-	echo "warning: found a running gsusb tool that may be holding the USB interface open:" >&2
+	echo "warning: found a running tool that may be holding a USB interface open:" >&2
 	echo "$BUSY" >&2
-	echo "(only one process can claim the adapter at a time -- stop it manually if verification below reports the device busy)" >&2
+	echo "(only one process can claim a given adapter at a time -- stop it manually if verification below reports the device busy)" >&2
 fi
 
 log "Creating $REMOTE_DIR on the router"
 ssh "${SSH_OPTS[@]}" "$SSH_USER@$HOST" "mkdir -p '$REMOTE_DIR/python'"
 
-log "Copying CLI tools + libgsusb.so"
+log "Copying gsusb CLI tools + libgsusb.so"
 scp "${SSH_OPTS[@]}" "$DIST_DIR"/driver/* "$SSH_USER@$HOST:$REMOTE_DIR/"
 
-log "Copying Python SDK"
-tar czf "$CTRL_DIR/gsusb-python.tgz" -C "$DIST_DIR/python" gsusb examples
-scp "${SSH_OPTS[@]}" "$CTRL_DIR/gsusb-python.tgz" "$SSH_USER@$HOST:$REMOTE_DIR/python/"
+log "Copying gcan_native_tool + libgcan_native.so"
+scp "${SSH_OPTS[@]}" "$DIST_DIR"/gcan_native/* "$SSH_USER@$HOST:$REMOTE_DIR/"
+
+log "Copying Python SDK (cancore + gsusb + gcan + candetect)"
+tar czf "$CTRL_DIR/python-sdk.tgz" -C "$DIST_DIR/python" cancore gsusb gcan candetect examples
+scp "${SSH_OPTS[@]}" "$CTRL_DIR/python-sdk.tgz" "$SSH_USER@$HOST:$REMOTE_DIR/python/"
 
 read -r -d '' UNPACK_SCRIPT <<EOF || true
 set -e
 cd '$REMOTE_DIR/python'
-tar xzf gsusb-python.tgz
-rm gsusb-python.tgz
-chmod +x '$REMOTE_DIR'/gsusb_info '$REMOTE_DIR'/gsusb_dump '$REMOTE_DIR'/gsusb_send '$REMOTE_DIR'/gsusb_react
+tar xzf python-sdk.tgz
+rm python-sdk.tgz
+chmod +x '$REMOTE_DIR'/gsusb_info '$REMOTE_DIR'/gsusb_dump '$REMOTE_DIR'/gsusb_send '$REMOTE_DIR'/gsusb_react '$REMOTE_DIR'/gcan_native_tool
 EOF
 ssh "${SSH_OPTS[@]}" "$SSH_USER@$HOST" "$UNPACK_SCRIPT"
 
-log "Installing udev rule (harmless as root; kept for consistency with other targets)"
-scp "${SSH_OPTS[@]}" "$REPO_ROOT/driver/udev/99-gsusb.rules" "$SSH_USER@$HOST:$REMOTE_DIR/"
+log "Installing udev rules (harmless as root; kept for consistency with other targets)"
+scp "${SSH_OPTS[@]}" "$REPO_ROOT/driver/udev/99-gsusb.rules" \
+	"$REPO_ROOT/driver/gcan_native/udev/99-gcan-native.rules" \
+	"$SSH_USER@$HOST:$REMOTE_DIR/"
 
 # --- 4. verify ---
 
@@ -148,13 +164,24 @@ log "Verifying deployment"
 read -r -d '' VERIFY_SCRIPT <<EOF || true
 echo "--- gsusb_info --scan (does not claim the device, safe even if something else holds it) ---"
 '$REMOTE_DIR/gsusb_info' --scan || true
-echo "--- python3 import + shared-library load check ---"
+echo "--- gcan_native_tool (prints usage, does not touch the device) ---"
+'$REMOTE_DIR/gcan_native_tool' || true
+echo "--- python3 import + shared-library load check (both backends + candetect) ---"
 cd '$REMOTE_DIR/python'
 python3 -c "
-import gsusb
+import cancore, gsusb, gcan, candetect
 print('gsusb SDK import OK, version', gsusb.__version__)
-lib = gsusb._ffi.load_library()
-print('libgsusb.so loaded OK:', lib)
+print('gcan SDK import OK, version', gcan.__version__)
+print('gsusb.Frame is gcan.Frame (shared cancore.Frame):', gsusb.Frame is gcan.Frame)
+try:
+    print('libgsusb.so loaded OK:', gsusb._ffi.load_library())
+except OSError as e:
+    print('libgsusb.so NOT loaded:', e)
+try:
+    print('libgcan_native.so loaded OK:', gcan._ffi.load_library())
+except OSError as e:
+    print('libgcan_native.so NOT loaded:', e)
+print('candetect import OK:', candetect.open_bus)
 "
 EOF
 ssh "${SSH_OPTS[@]}" "$SSH_USER@$HOST" "$VERIFY_SCRIPT"
@@ -162,8 +189,14 @@ ssh "${SSH_OPTS[@]}" "$SSH_USER@$HOST" "$VERIFY_SCRIPT"
 log "Done. Deployed to $SSH_USER@$HOST:$REMOTE_DIR"
 cat <<EOF
 
-  CLI tools:  $REMOTE_DIR/{gsusb_info,gsusb_dump,gsusb_send,gsusb_react}
-  Python SDK: $REMOTE_DIR/python/gsusb   (run scripts from $REMOTE_DIR/python, or add it to PYTHONPATH)
-  Examples:   $REMOTE_DIR/python/examples/{dump,react}.py
+  gsusb CLI tools: $REMOTE_DIR/{gsusb_info,gsusb_dump,gsusb_send,gsusb_react}
+  gcan CLI tool:   $REMOTE_DIR/gcan_native_tool
+  Python SDK:      $REMOTE_DIR/python/{cancore,gsusb,gcan,candetect}   (run scripts from $REMOTE_DIR/python, or add it to PYTHONPATH)
+  Examples:        $REMOTE_DIR/python/examples/{dump,react,rpm_monitor,capture}.py
+
+  Note: candetect.open_bus() picks whichever adapter is attached. The gcan
+  backend (gcan_native) is one channel/500kbit/classic-CAN only and
+  unverified against real hardware -- see driver/gcan_native/README.md
+  before relying on it.
 
 EOF
