@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gsusb"
+name = "cansdk"
 version = "0.1.0"
-description = "Python SDK for the gs_usb userspace CAN driver (ctypes bindings over libgsusb.so)"
+description = "Python SDK for this repo's userspace CAN drivers -- gsusb (gs_usb-protocol adapters) and gcan (GCAN/ECAN/Rexon USBCANI-V503), sharing Frame/Detector types from cancore, plus candetect to auto-pick whichever is attached"
 readme = "README.md"
 requires-python = ">=3.7"
 
@@ -14,6 +14,11 @@ python-can = ["python-can>=4.2"]
 
 [project.entry-points."can.interface"]
 gsusb = "gsusb.python_can:GsUsbNativeBus"
+gcan = "gcan.python_can:GcanNativeBus"
 
 [tool.setuptools.packages.find]
-include = ["gsusb*"]
+include = ["cancore*", "gsusb*", "gcan*", "candetect*"]
+
+[tool.setuptools.package-data]
+gsusb = ["libgsusb.so"]
+gcan = ["libgcan_native.so"]
