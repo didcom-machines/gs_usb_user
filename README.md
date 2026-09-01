@@ -40,27 +40,51 @@ devices like the Teltonika RUTX11, but usable anywhere).
   as the standalone binaries. Start here to build/deploy on a new target,
   or to use it directly from C.
 
-- **[`sdk/python/`](sdk/python/)** -- Python bindings over `libgsusb.so`
-  (via `ctypes`, no compiler needed on the target), with an object-oriented
-  event-detection API (`Bus`, `Frame`, `Detector`) for applications that
-  need to watch the bus and react by transmitting, concurrently, from a
-  single process. Also includes an optional `python-can`-compatible
-  `BusABC` adapter (`gsusb.python_can`, interface name `"gsusb"`) for
-  environments that have `python-can` installed.
+- **[`driver/gcan/`](driver/gcan/)** -- the vendor's own `libECanVci.so.1`
+  for the GCAN/ECAN/Rexon USBCANI-V503 adapter (x86/x86-64 prebuilt
+  binaries only -- no ARM build) alongside a third-party reverse-engineered
+  `libusb-1.0` CLI for the same hardware that the from-scratch driver below
+  is built from.
+
+- **[`driver/gcan_native/`](driver/gcan_native/)** -- a from-scratch,
+  `libusb-1.0`-only userspace driver for the same GCAN/ECAN/Rexon
+  USBCANI-V503 adapter, built from a reverse-engineered protocol rather
+  than the vendor blob above -- so it builds and runs natively on ARM
+  (the RUTX11 included). Currently CAN1/500 kbit/s/classic-CAN only, and
+  unverified against real hardware (see its README). This is what the
+  Python SDK now binds to.
+
+- **[`sdk/python/`](sdk/python/)** -- Python bindings, via `ctypes`, with
+  an object-oriented event-detection API (`Bus`, `Frame`, `Detector`) for
+  applications that need to watch the bus and react by transmitting,
+  concurrently, from a single process. `Frame`/`Detector` (`cancore/`) are
+  hardware-agnostic and shared as-is by two backends -- `gsusb` (backed by
+  `driver/`'s `libgsusb.so`) and `gcan` (backed by `driver/gcan_native/`'s
+  `libgcan_native.so`) -- whose `Bus` classes are deliberately built to
+  the same shape, plus `candetect` to auto-pick whichever adapter is
+  attached. See `sdk/python/README.md` for the API alignment and gcan's
+  current limitations. Both backends include an optional
+  `python-can`-compatible `BusABC` adapter (interface names
+  `"gsusb"`/`"gcan"`) for environments
+  that have `python-can` installed.
 
 - **[`deploy/rutx11.sh`](deploy/rutx11.sh)** -- one-shot script that
-  cross-builds the driver + Python SDK for the RUTX11 (armv7/musl) and
-  deploys both over SSH, with a real post-deploy verification (device scan
-  + shared-library load check). `./deploy/rutx11.sh --host <ip>`.
+  cross-builds the gsusb driver, the gcan_native driver, and the Python SDK
+  for the RUTX11 (armv7/musl) and deploys all of it over SSH, with a real
+  post-deploy verification. `./deploy/rutx11.sh --host <ip>`.
 
 ## Quick start
 
 ```sh
-cd driver && make          # builds the CLI tools + libgsusb.so
+cd driver && make          # builds the gsusb CLI tools + libgsusb.so
+cd driver/gcan_native && make   # builds libgcan_native.so + gcan_native_tool
 ```
-Then either use the CLI tools directly (see `driver/README.md`), or build a
-Python application against `sdk/python/gsusb` (see `sdk/python/README.md`).
-Deploying to a RUTX11 specifically: `deploy/rutx11.sh --host <ip>`.
+Then either use the CLI tools directly (see `driver/README.md` and
+`driver/gcan_native/README.md`), or build a Python application against
+`sdk/python/candetect` (auto-picks whichever adapter is attached) or a
+specific backend, `sdk/python/gsusb`/`sdk/python/gcan` (see
+`sdk/python/README.md`). Deploying to a RUTX11 specifically:
+`deploy/rutx11.sh --host <ip>`.
 
 ## Status
 
