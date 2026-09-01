@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
-"""J1939 engine RPM (EEC1 / SPN 190) console monitor, built on the gsusb
-Python SDK.
+"""J1939 engine RPM (EEC1 / SPN 190) console monitor, built on candetect --
+works with whichever supported adapter is attached.
 
 EEC1 message, PGN 0xF004 (61444), SPN 190 (Engine Speed):
 signal starts at bit 24, length 16, little-endian ("Intel"), scale 0.125,
 offset 0. High byte of the raw value > 0xFA means "error/not available"
 per J1939 convention.
+
+Note: real J1939 buses run at 250 kbit/s (the default here), but if
+candetect ends up opening the gcan backend, its only confirmed-working
+rate so far is 500 kbit/s (see driver/gcan_native/README.md) -- configure()
+will raise in that case. Pass 500000 explicitly if you're testing against
+a 500 kbit/s bench bus with J1939-shaped traffic rather than the real
+thing. Also note neither backend's listen-only mode is guaranteed here --
+this process ACKs frames on the bus like any other CAN node either way,
+but never transmits anything itself since it never calls bus.send().
 
 usage: rpm_monitor.py [bitrate]
 """
@@ -15,11 +24,11 @@ from typing import Optional
 
 # Makes this script runnable standalone (python3 examples/rpm_monitor.py)
 # without needing PYTHONPATH set -- Python only puts the script's own
-# directory on sys.path, not its parent, so the sibling ../gsusb package
-# needs this.
+# directory on sys.path, not its parent, so the sibling ../candetect
+# package needs this.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from gsusb import Bus, Frame
+from candetect import Frame, NoSupportedAdapterError, open_bus
 
 EEC1_PGN = 0xF004  # PGN 61444
 SPN190_START_BIT = 24  # byte-aligned here: byte 3, bit 0
@@ -64,9 +73,17 @@ def try_get_engine_speed(frame: Frame) -> Optional[float]:
 
 def main():
     bitrate = int(sys.argv[1]) if len(sys.argv) > 1 else 250000  # J1939 standard rate
-    with Bus() as bus:
+
+    try:
+        bus = open_bus()
+    except NoSupportedAdapterError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"opened {type(bus).__module__}.{type(bus).__qualname__}", file=sys.stderr)
+    with bus:
         bus.configure(bitrate=bitrate)
-        bus.start(listen_only=True)  # pure observer: never ACKs or transmits onto the bus
+        bus.start()
         print(f"watching for EEC1 (PGN 0x{EEC1_PGN:04X}) engine speed frames "
               f"at {bitrate} bps, Ctrl-C to stop", file=sys.stderr)
         try:

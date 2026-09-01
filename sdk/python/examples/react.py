@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Listen-and-react example demonstrating the object pattern for detection.
+"""Listen-and-react example demonstrating the object pattern for detection,
+built on candetect -- works with whichever supported adapter is attached.
 
 Two ways of reacting to the same key frame are shown side by side: a plain
 IdDetector with a callback function (the common case), and a Detector
@@ -14,10 +15,10 @@ import time
 
 # Makes this script runnable standalone (python3 examples/react.py) without
 # needing PYTHONPATH set -- Python only puts the script's own directory on
-# sys.path, not its parent, so the sibling ../gsusb package needs this.
+# sys.path, not its parent, so the sibling ../candetect package needs this.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from gsusb import Bus, Detector, Frame, IdDetector
+from candetect import Detector, Frame, IdDetector, NoSupportedAdapterError, open_bus
 
 KEY_ID = 0x100
 
@@ -47,7 +48,15 @@ class CountingDetector(Detector):
 
 def main():
     bitrate = int(sys.argv[1]) if len(sys.argv) > 1 else 500000
-    with Bus() as bus:
+
+    try:
+        bus = open_bus()
+    except NoSupportedAdapterError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"opened {type(bus).__module__}.{type(bus).__qualname__}", file=sys.stderr)
+    with bus:
         bus.configure(bitrate=bitrate)
         bus.add_detector(IdDetector(KEY_ID, callback=on_key_frame))
         bus.add_detector(CountingDetector(KEY_ID))
