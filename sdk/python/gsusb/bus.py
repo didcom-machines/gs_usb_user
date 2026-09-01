@@ -15,10 +15,11 @@ import queue
 import threading
 from typing import Optional
 
+from cancore import Frame
+
 from . import _ffi
 from .devices import KNOWN_DEVICES
 from .exceptions import GsusbError
-from .frame import Frame
 
 logger = logging.getLogger("gsusb.bus")
 
@@ -41,6 +42,13 @@ class Bus:
     --scan on the target); if vid/pid are omitted, every id in
     gsusb.devices.KNOWN_DEVICES is tried in turn, same as the CLI tools.
     """
+
+    #: cancore.Frame (the same class gcan.Bus.Frame points to -- there's
+    #: only one Frame class, see cancore's module doc), exposed here so
+    #: code that obtained a Bus without importing gsusb or cancore
+    #: directly (e.g. via candetect.open_bus()) can still do
+    #: bus.Frame.standard(...).
+    Frame = Frame
 
     def __init__(self, vid: Optional[int] = None, pid: Optional[int] = None,
                  usb_bus: Optional[int] = None, usb_addr: Optional[int] = None,
@@ -262,7 +270,7 @@ class Bus:
                 logger.warning("gsusb_channel_recv: %s", self._errmsg(rc))
                 break
 
-            frame = Frame._from_ctypes(frame_c)
+            frame = _ffi.frame_from_ctypes(frame_c)
 
             # Feed recv()'s queue (drop-oldest if a caller never drains it,
             # same overflow policy as the C library's own ring buffer).
@@ -291,7 +299,7 @@ class Bus:
 
     def send(self, frame: Frame, timeout_ms: int = 1000) -> None:
         self._require_open()
-        c = frame._to_ctypes()
+        c = _ffi.frame_to_ctypes(frame)
         rc = self._lib.gsusb_channel_send(self._ch, ct.byref(c), timeout_ms)
         self._check(rc, "send")
 

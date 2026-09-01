@@ -8,12 +8,15 @@ call bus.send(...) from inside it to react.
 Use the built-ins (IdDetector, MaskDetector, PredicateDetector) with a plain
 callback for the common case, or subclass Detector directly when you need
 state (counters, debouncing, a multi-frame sequence) across detections.
+
+Hardware-agnostic, like Frame -- works the same regardless of which
+backend's Bus is dispatching to it.
 """
 import logging
 
 from .frame import Frame
 
-logger = logging.getLogger("gsusb.detectors")
+logger = logging.getLogger("cancore.detectors")
 
 
 class Detector:

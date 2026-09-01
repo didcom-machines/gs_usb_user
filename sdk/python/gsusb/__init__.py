@@ -13,11 +13,11 @@ programs. Requires libgsusb.so (built from ../../driver) to be reachable --
 see gsusb._ffi.load_library() for the search order, or set
 GSUSB_LIBRARY_PATH.
 """
+from cancore import Detector, Frame, IdDetector, MaskDetector, PredicateDetector
+
 from .bus import Bus
-from .detectors import Detector, IdDetector, MaskDetector, PredicateDetector
 from .devices import KNOWN_DEVICES, KnownDevice
 from .exceptions import GsusbError
-from .frame import Frame
 
 __version__ = "0.1.0"
 

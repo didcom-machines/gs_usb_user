@@ -3,25 +3,21 @@
 This module is a 1:1 mirror of driver/include/gsusb.h -- struct layouts and
 function signatures here must match that header exactly, since ctypes does
 no verification of its own. Nothing in here is meant to be used directly;
-see gsusb.bus.Bus and gsusb.frame.Frame for the public API.
+see gsusb.bus.Bus and cancore.Frame for the public API.
+
+frame_to_ctypes()/frame_from_ctypes() are this module's translation
+between cancore.Frame (hardware-agnostic) and GsusbFrame (this library's
+wire struct) -- the only place that translation happens, so Frame itself
+doesn't need to know this backend exists.
 """
 import ctypes as ct
 import ctypes.util
 import os
 
+from cancore import Frame
+from cancore.frame import EFF_FLAG, RTR_FLAG, ERR_FLAG, EFF_MASK, SFF_MASK, FRAME_FD, FRAME_BRS, FRAME_ESI
+
 GSUSB_MAX_DLEN = 64
-
-# CAN ID flags/masks -- identical bit layout to Linux <linux/can.h>.
-EFF_FLAG = 0x80000000
-RTR_FLAG = 0x40000000
-ERR_FLAG = 0x20000000
-EFF_MASK = 0x1FFFFFFF
-SFF_MASK = 0x000007FF
-
-# gsusb_frame::flags
-FRAME_FD = 0x01
-FRAME_BRS = 0x02
-FRAME_ESI = 0x04
 
 # gsusb_feature bits
 FEATURE_LISTEN_ONLY = 1 << 0
@@ -75,6 +71,35 @@ class GsusbFrame(ct.Structure):
         ("data", ct.c_uint8 * GSUSB_MAX_DLEN),
         ("timestamp_us", ct.c_uint32),
     ]
+
+
+def frame_to_ctypes(frame) -> GsusbFrame:
+    """Converts a cancore.Frame to this library's wire struct."""
+    data = bytes(frame.data)
+    max_len = GSUSB_MAX_DLEN if (frame.flags & FRAME_FD) else 8
+    if len(data) > max_len:
+        raise ValueError(
+            f"frame data length {len(data)} exceeds max {max_len} bytes "
+            f"for this frame type (set flags=gsusb.FRAME_FD for CAN-FD)"
+        )
+    c = GsusbFrame()
+    c.can_id = frame.can_id
+    c.len = len(data)
+    c.flags = frame.flags
+    for i, byte in enumerate(data):
+        c.data[i] = byte
+    c.timestamp_us = frame.timestamp_us
+    return c
+
+
+def frame_from_ctypes(c: GsusbFrame):
+    """Converts this library's wire struct to a cancore.Frame."""
+    return Frame(
+        can_id=c.can_id,
+        data=bytes(c.data[: c.len]),
+        flags=c.flags,
+        timestamp_us=c.timestamp_us,
+    )
 
 
 class GsusbBittimingConst(ct.Structure):

@@ -33,9 +33,10 @@ except ImportError as exc:  # pragma: no cover
         "gsusb.python_can requires the 'python-can' package: pip install python-can"
     ) from exc
 
+from cancore import Frame
+
 from . import _ffi
 from .bus import Bus
-from .frame import Frame
 
 
 class GsUsbNativeBus(can.BusABC):
