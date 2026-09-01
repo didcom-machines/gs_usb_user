@@ -9,3 +9,8 @@ __pycache__/
 *.pyc
 *.egg-info/
 .~lock.*#
+
+# Reference clone used while reverse-engineering the GCAN adapter protocol
+# (cited by URL in driver/gcan_native/README.md) -- not built from or
+# depended on by anything in this repo, so not vendored/tracked here.
+driver/gcan/

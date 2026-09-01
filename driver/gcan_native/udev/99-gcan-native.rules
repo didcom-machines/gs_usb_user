@@ -1,0 +1,3 @@
+# GCAN / ECAN / Rexon USBCANI-V503 -- lets a non-root user (in the
+# plugdev group) open the adapter. See ../README.md.
+SUBSYSTEM=="usb", ATTR{idVendor}=="0c66", ATTR{idProduct}=="000c", MODE="0666", GROUP="plugdev", TAG+="uaccess"
