@@ -50,6 +50,8 @@ function Bus.new(opts)
     local self = setmetatable({}, Bus)
     self._vid = opts.vid or DEFAULT_VID
     self._pid = opts.pid or DEFAULT_PID
+    self._usb_bus = opts.usb_bus  -- nil = "match any", same as ctx:open()'s own default
+    self._usb_addr = opts.usb_addr
     self._channel_index = opts.channel or 0
     self._detectors = {}
     self._ctx = nil
@@ -68,7 +70,11 @@ function Bus:open()
     if not ctx then
         error("gsusb.init() failed: " .. tostring(ctx_err))
     end
-    local dev, dev_err = ctx:open(self._vid, self._pid)
+    -- self._usb_bus/_usb_addr pass through as nil when unset, which
+    -- ctx:open()'s underlying luaL_optinteger() treats the same as
+    -- omitting the argument (defaults to -1, "match any" -- see
+    -- lua_gsusb.c's l_ctx_open()).
+    local dev, dev_err = ctx:open(self._vid, self._pid, self._usb_bus, self._usb_addr)
     if not dev then
         ctx:exit()
         error(string.format("no adapter found (vid=0x%04x pid=0x%04x): %s",
