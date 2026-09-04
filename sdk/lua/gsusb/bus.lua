@@ -2,7 +2,7 @@
 (lua_gsusb.c) -- the Lua counterpart of this repo's own Python gsusb.bus
 module (Bus/Frame/Detector), kept at the same generic, protocol-agnostic
 layer for the same reason: this driver knows nothing about IOX/FMX, only
-"open an adapter, send/receive raw CAN frames". fmx-can-control's Lua
+"open an adapter, send/receive raw CAN frames". iox-orchestrator's Lua
 IOXDevice/IOXBus port is what builds the IOX/FMX object model on top of
 this, exactly as its Python counterpart builds on gsusb.Bus/
 PredicateDetector.
@@ -176,7 +176,7 @@ end
 -- blindly -- Lua's standard library has no sleep() at all (no FFI here to
 -- reach a libc usleep/nanosleep either, see lua_gsusb.c's module
 -- docstring on why). Used by IOXDevice:sleep()/IOXBus:sleep()
--- (fmx-can-control) so on_event()/on_change() keep firing during a
+-- (iox-orchestrator) so on_event()/on_change() keep firing during a
 -- "sleep" instead of it stopping dispatch for its whole duration.
 --
 -- CORRECTNESS NOTE (a real bug this shipped with initially): recv()'s
