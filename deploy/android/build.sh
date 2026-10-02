@@ -96,20 +96,36 @@ for tool in gsusb_info gsusb_dump gsusb_send gsusb_react; do
 	$CC $CFLAGS_COMMON tools/$tool.c build/gsusb.o build/bittiming.o -o bin/$tool $LDFLAGS_COMMON
 done
 
+# libgsusb.so: the same driver as a shared library, for the Python SDK's
+# ctypes bindings (gsusb.Bus) -- libusb statically linked in, same as the
+# CLI tools, so Termux needs nothing extra at runtime. -fPIC (not -fPIE):
+# this goes into a shared object. Exports gsusb_open_fd()/
+# gsusb_init_no_discovery() on top of the regular API, for callers that
+# receive the device fd from termux-usb.
+$CC -std=c11 -D_POSIX_C_SOURCE=200809L -O2 -Wall -Wextra -fPIC -Iinclude -I/tmp/libusb-install/include/libusb-1.0 \
+	-shared src/gsusb.c src/bittiming.c -o bin/libgsusb.so \
+	-L/tmp/libusb-install/lib -lusb-1.0 -lm
+$STRIP --strip-unneeded bin/libgsusb.so
+
 echo "==> Verifying ELF headers"
 for tool in gsusb_info gsusb_dump gsusb_send gsusb_react; do
 	echo "-- $tool --"
 	$READELF -h bin/$tool | grep -E 'Class|Machine|Type'
 	$READELF -d bin/$tool | grep NEEDED
 done
+echo "-- libgsusb.so --"
+$READELF -h bin/libgsusb.so | grep -E 'Class|Machine|Type'
+$READELF -d bin/libgsusb.so | grep NEEDED
+$READELF --dyn-syms bin/libgsusb.so | grep -E 'gsusb_(open_fd|init_no_discovery|open|channel_recv)$'
+
 
 mkdir -p /src/dist-android
-cp bin/gsusb_info bin/gsusb_dump bin/gsusb_send bin/gsusb_react /src/dist-android/
+cp bin/gsusb_info bin/gsusb_dump bin/gsusb_send bin/gsusb_react bin/libgsusb.so /src/dist-android/
 # Bundle the termux-usb wrapper alongside the binaries -- copying just this
 # directory's contents should be everything needed to run on-device.
 cp /src/deploy/android/run-with-usb.sh /src/dist-android/
 chown "$HOST_UID:$HOST_GID" /src/dist-android/*
-echo "==> Done: dist-android/{gsusb_info,gsusb_dump,gsusb_send,gsusb_react,run-with-usb.sh}"
+echo "==> Done: dist-android/{gsusb_info,gsusb_dump,gsusb_send,gsusb_react,libgsusb.so,run-with-usb.sh}"
 INNER
 
 docker run --rm \
